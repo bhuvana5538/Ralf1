@@ -1,0 +1,12 @@
+pandas
+openai
+peft
+transformers
+scikit-learn
+datasets
+evaluate
+google-generativeai
+torch
+streamlit
+nltk
+humanize
