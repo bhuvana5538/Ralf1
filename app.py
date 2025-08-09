@@ -109,10 +109,9 @@ def main():
                     st.session_state['credentials_valid'] = False
 
     # Main content
-    tabs = st.tabs(["Recommendation", "Augmentation", "Lustration", "Finetuning"])
+    tabs = st.tabs(["Recommendation", "Augmentation", "Lustration", "Futureproofing"])
 
     # Data Upload Tab
-    
     with st.sidebar:
         st.header("Data Upload")
         st.write("Upload your dataset in CSV format for analysis and training.")
@@ -128,9 +127,8 @@ def main():
                     st.write(f"Number of rows: {len(df)}")
                     st.write(f"Number of columns: {len(df.columns)}")
                     
-                    st.subheader("Data Preview")
-                    st.dataframe(df.head())
-                    
+                    # Data preview removed from sidebar
+
                     col1, col2 = st.columns(2)
                     with col1:
                         source_col = st.selectbox(
@@ -138,19 +136,12 @@ def main():
                             df.columns,
                             help="Column containing input text"
                         )
-                        #if source_col:
-                            #st.write("Sample source data:")
-                            #st.write(df[source_col].head())
-                    
                     with col2:
                         target_col = st.selectbox(
                             "Select target column", 
                             [col for col in df.columns if col != source_col],
                             help="Column containing target/label text"
                         )
-                        #if target_col:
-                            #st.write("Sample target data:")
-                            #st.write(df[target_col].head())
                     
                     if st.button("Analyze Dataset"):
                         if not st.session_state.get('credentials_valid', False):
@@ -169,7 +160,7 @@ def main():
                                         source_col,
                                         target_col
                                     )
-                                    os.remove(temp_csv_path)  # Clean up temp file
+                                    os.remove(temp_csv_path)
                                     if isinstance(llm_df, pd.DataFrame) and not llm_df.empty:
                                         st.session_state['llm_df'] = llm_df
                                         st.session_state['dataset_df'] = dataset_df
@@ -179,19 +170,22 @@ def main():
                                         st.session_state['target_col'] = target_col
                                     else:
                                         st.error("No models recommended. Please check your dataset and try again.")
-                                    
-                                    st.success("Analysis complete! Check the Model Selection tab.")
+                                    st.success("Analysis complete! Check the Recommendation tab.")
                                 except Exception as e:
                                     st.error(f"Error during analysis: {str(e)}")
-                                
             except Exception as e:
                 st.error(f"Error reading CSV file: {str(e)}")
 
-    # Model Selection Tab
+    # Recommendation Tab
     with tabs[0]:
-        st.header("Model Selection")
+        st.header("Model Recommendation")
 
-    # Check if analysis is present
+        # Data Preview moved here and always shown if available
+        if 'df' in st.session_state:
+            st.subheader("Data Preview")
+            st.dataframe(st.session_state['df'].head())
+
+        # Check if analysis is present
         if 'analysis' in st.session_state:
             st.subheader("🧠 Problem Analysis")
 
@@ -227,18 +221,49 @@ def main():
                 st.error("No models recommended. Please check your dataset and try again.")
             else:
                 st.subheader("Recommended Models")
-                #st.dataframe(st.session_state['llm_df'])
+                st.markdown("Below is a list of all recommended models for your dataset. Each model is assigned a serial number for easy reference. The table also includes a short description for each model.")
+
                 llm_df = st.session_state['llm_df'].copy()
                 if "Name" in llm_df.columns and "Hugging Face URL" in llm_df.columns:
                     llm_df["Name"] = llm_df.apply(
                         lambda row: f'<a href="{row["Hugging Face URL"]}" target="_blank">{row["Name"]}</a>' if pd.notnull(row["Hugging Face URL"]) and pd.notnull(row["Name"]) else row["Name"], axis=1
                     )
-                
-                display_df = llm_df[["Name", "Parameters"]]
+                # Add Serial Number column starting from 1
+                llm_df.insert(0, "S.No", range(1, len(llm_df) + 1))
+
+                # Add Description column for every recommended model
+                # Try to use model name or ID for mapping, fallback to a generic description
+                model_descriptions = {
+                    "distilbert-base-uncased": "A smaller, faster version of BERT for English text.",
+                    "bert-base-uncased": "The original BERT base model, uncased, for English.",
+                    "roberta-base": "A robustly optimized BERT pretraining approach.",
+                    "albert-base-v2": "A lite BERT model with fewer parameters and similar performance.",
+                    "xlnet-base-cased": "A generalized autoregressive pretraining model for language understanding.",
+                    # Add more known models here as needed
+                }
+
+                def get_description(row):
+                    # Try to extract the plain model name from the HTML link if present
+                    import re
+                    name = row["Name"]
+                    # Remove HTML tags if present
+                    plain_name = re.sub('<[^<]+?>', '', str(name))
+                    # Try Model ID if available
+                    model_id = row["Model ID"] if "Model ID" in row else None
+                    # Prefer model_id for lookup if available
+                    desc = model_descriptions.get(model_id, None)
+                    if not desc:
+                        desc = model_descriptions.get(plain_name, None)
+                    if not desc:
+                        desc = f"{plain_name} is a transformer-based language model from Hugging Face."
+                    return desc
+
+                llm_df["Description"] = llm_df.apply(get_description, axis=1)
+
+                display_df = llm_df[["S.No", "Name", "Parameters", "Description"]]
                 st.markdown(display_df.to_html(escape=False, index=False), unsafe_allow_html=True)
 
-
-            # Model ID selection
+                # Remove model selection, store all model IDs
                 if "Model ID" not in st.session_state['llm_df'].columns:
                     st.error(f"`Model ID` column not found. Available columns: {', '.join(st.session_state['llm_df'].columns)}")
                 else:
@@ -246,12 +271,7 @@ def main():
                     if not model_ids:
                         st.error("No model IDs found in the recommended models.")
                     else:
-                        selected_model = st.selectbox(
-                            "Select a model for training",
-                            model_ids
-                       )
-                        if selected_model:
-                            st.session_state['selected_model'] = selected_model
+                        st.session_state['selected_models'] = model_ids  # Store all
 
             # Golden dataset display
             st.subheader("Recommended Golden Dataset")
@@ -318,60 +338,52 @@ def main():
 
     # Training Tab
     with tabs[3]:
-        st.header("Model Training")
-        if 'selected_model' in st.session_state:
+        st.header("Model Futureproofing")
+        if 'selected_models' in st.session_state:
             col1, col2 = st.columns(2)
-            
             with col1:
                 epochs = st.number_input("Number of epochs", min_value=1, value=3)
                 batch_size = st.number_input("Batch size", min_value=1, value=16)
                 st.session_state['epochs'] = epochs
                 st.session_state['batch_size'] = batch_size
-            
             with col2:
                 learning_rate = st.number_input("Learning rate", min_value=0.0, value=2e-5)
                 output_dir = st.text_input("Output directory", value="./results")
                 st.session_state['learning_rate'] = learning_rate
                 st.session_state['output_dir'] = output_dir
-            
+
             if st.button("Start Training"):
                 try:
                     with st.spinner("Training in progress..."):
                         progress_bar = st.progress(0)
-                        
                         ralf = Ralf(HF_TOKEN=hf_token, 
                                   OPENAI_API_KEY=openai_key, 
                                   GEMINI_API_KEY=gemini_key)
-                        
-                        # Load and process data
-                        ralf.load_and_process_data(
-                            st.session_state['df'],
-                            st.session_state['source_col'],
-                            st.session_state['target_col'],
-                            st.session_state['selected_model']
-                        )
-                        
-                        # Load and configure model
-                        ralf.load_and_configure_model()
-                        
-                        # Initialize trainer with custom parameters
-                        total_steps = epochs * (len(st.session_state['df']) // batch_size)
-                        current_step = 0
-                        
-                        def update_progress(step_info):
-                            nonlocal current_step
-                            current_step += 1
-                            progress = min(current_step / total_steps, 1.0)
-                            progress_bar.progress(progress)
-                        
-                        ralf.trainer.add_callback(update_progress)
-                        ralf.trainer.train()
+                        total_models = len(st.session_state['selected_models'])
+                        for idx, model_id in enumerate(st.session_state['selected_models']):
+                            ralf.load_and_process_data(
+                                st.session_state['df'],
+                                st.session_state['source_col'],
+                                st.session_state['target_col'],
+                                model_id
+                            )
+                            ralf.load_and_configure_model()
+                            total_steps = epochs * (len(st.session_state['df']) // batch_size)
+                            current_step = 0
+                            def update_progress(step_info):
+                                nonlocal current_step
+                                current_step += 1
+                                progress = min((idx + current_step / total_steps) / total_models, 1.0)
+                                progress_bar.progress(progress)
+                            ralf.trainer.add_callback(update_progress)
+                            ralf.trainer.train()
                         progress_bar.progress(1.0)
-                        st.success("Training completed!")
+                        st.success("Training completed for all recommended models!")
                 except Exception as e:
                     st.error(f"Error during training: {str(e)}")
         else:
-            st.info("Please select a model first.")
+            st.info("Please analyze your dataset and get model recommendations first.")
+
 
 if __name__ == "__main__":
     main()
