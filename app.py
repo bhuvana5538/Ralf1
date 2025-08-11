@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from ralf.ralf import Ralf
 import os
-from io import StringIO
 import torch
 import psutil
 import humanize
@@ -14,11 +13,10 @@ st.set_page_config(
     layout="wide"
 )
 
+# ---------------------- STYLES ----------------------
 st.markdown("""
     <style>
-    .main {
-        padding: 2rem;
-    }
+    .main { padding: 2rem; }
     .stButton button {
         width: 100%;
         border-radius: 5px;
@@ -36,17 +34,12 @@ st.markdown("""
         padding: 1rem;
         border-radius: 5px;
         background-color: #FFE8E6;
-            color: #4F8A10;
-    }
-    .error-message {
-        padding: 1rem;
-        border-radius: 5px;
-        background-color: #FFE8E6;
         color: #D8000C;
     }
     </style>
 """, unsafe_allow_html=True)
 
+# ---------------------- SYSTEM INFO ----------------------
 def get_system_info():
     gpu_available = torch.cuda.is_available()
     gpu_info = f"{torch.cuda.get_device_name(0)}" if gpu_available else "No GPU"
@@ -59,15 +52,14 @@ def get_system_info():
         "System RAM": ram
     }
 
+# ---------------------- MAIN ----------------------
 def main():
     st.title("🤖 RALF - Resource-Aware LLM Finetuning")
-    
-    # Sidebar for API keys
+
+    # Sidebar
     with st.sidebar:
         st.markdown("## 🖥️ System Information")
         sys_info = get_system_info()
-        
-        # Create a grid for system metrics
         col1, col2 = st.columns(2)
         with col1:
             st.metric(label="GPU", value=sys_info["GPU Available"])
@@ -75,13 +67,11 @@ def main():
         with col2:
             st.metric(label="GPU Model", value=sys_info["GPU Model"])
             st.metric(label="System RAM", value=sys_info["System RAM"])
-        
-        st.markdown("---")  # Divider
+
+        st.markdown("---")
         st.header("API Configuration")
         hf_token = st.text_input("Hugging Face Token", type="password")
-        api_choice = st.radio("Choose API for Recommendations", 
-                            ["OpenAI", "Gemini"])
-        
+        api_choice = st.radio("Choose API for Recommendations", ["OpenAI", "Gemini"])
         if api_choice == "OpenAI":
             openai_key = st.text_input("OpenAI API Key", type="password")
             gemini_key = None
@@ -89,7 +79,6 @@ def main():
             gemini_key = st.text_input("Gemini API Key", type="password")
             openai_key = None
 
-        # Add credential validation
         if st.button("Validate Credentials"):
             if not hf_token:
                 st.error("Please provide a Hugging Face token")
@@ -99,24 +88,18 @@ def main():
                 st.error("Please provide a Gemini API key")
             else:
                 try:
-                    ralf = Ralf(HF_TOKEN=hf_token, 
-                              OPENAI_API_KEY=openai_key, 
-                              GEMINI_API_KEY=gemini_key)
+                    ralf = Ralf(HF_TOKEN=hf_token,
+                                OPENAI_API_KEY=openai_key,
+                                GEMINI_API_KEY=gemini_key)
                     st.success("Credentials validated successfully!")
                     st.session_state['credentials_valid'] = True
                 except Exception as e:
                     st.error(f"Validation failed: {str(e)}")
                     st.session_state['credentials_valid'] = False
 
-    # Main content
-    tabs = st.tabs(["Recommendation", "Augmentation", "Lustration", "Futureproofing"])
-
-    # Data Upload Tab
-    with st.sidebar:
+        st.markdown("---")
         st.header("Data Upload")
-        st.write("Upload your dataset in CSV format for analysis and training.")
         uploaded_file = st.file_uploader("Upload your dataset (CSV)", type=['csv'])
-        
         if uploaded_file is not None:
             try:
                 df = pd.read_csv(uploaded_file)
@@ -126,73 +109,84 @@ def main():
                     st.write(f"File size: {uploaded_file.size/1024:.2f} KB")
                     st.write(f"Number of rows: {len(df)}")
                     st.write(f"Number of columns: {len(df.columns)}")
-                    
-                    # Data preview removed from sidebar
-
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        source_col = st.selectbox(
-                            "Select source column", 
-                            df.columns,
-                            help="Column containing input text"
-                        )
-                    with col2:
-                        target_col = st.selectbox(
-                            "Select target column", 
-                            [col for col in df.columns if col != source_col],
-                            help="Column containing target/label text"
-                        )
-                    
-                    if st.button("Analyze Dataset"):
-                        if not st.session_state.get('credentials_valid', False):
-                            st.error("Please validate your API credentials first")
-                        else:
-                            with st.spinner("Analyzing dataset..."):
-                                try:
-                                    temp_csv_path = "temp_dataset.csv"
-                                    df.to_csv(temp_csv_path, index=False)
-                                    ralf = Ralf(HF_TOKEN=hf_token, 
-                                              OPENAI_API_KEY=openai_key, 
-                                              GEMINI_API_KEY=gemini_key)
-                                    
-                                    llm_df, dataset_df, analysis = ralf.recommend(
-                                        temp_csv_path,
-                                        source_col,
-                                        target_col
-                                    )
-                                    os.remove(temp_csv_path)
-                                    if isinstance(llm_df, pd.DataFrame) and not llm_df.empty:
-                                        st.session_state['llm_df'] = llm_df
-                                        st.session_state['dataset_df'] = dataset_df
-                                        st.session_state['analysis'] = analysis
-                                        st.session_state['df'] = df
-                                        st.session_state['source_col'] = source_col
-                                        st.session_state['target_col'] = target_col
-                                    else:
-                                        st.error("No models recommended. Please check your dataset and try again.")
-                                    st.success("Analysis complete! Check the Recommendation tab.")
-                                except Exception as e:
-                                    st.error(f"Error during analysis: {str(e)}")
+                    st.session_state['df'] = df
             except Exception as e:
                 st.error(f"Error reading CSV file: {str(e)}")
 
-    # Recommendation Tab
-    with tabs[0]:
-        st.header("Model Recommendation")
+    # Tabs
+    tabs = st.tabs(["Analysis", "Recommendation", "Augmentation", "Lustration", "Futureproofing"])
 
-        # Data Preview moved here and always shown if available
+    # ---------------------- ANALYSIS TAB ----------------------
+    with tabs[0]:
+        st.header("Dataset Analysis")
         if 'df' in st.session_state:
             st.subheader("Data Preview")
             st.dataframe(st.session_state['df'].head())
 
-        # Check if analysis is present
+            col1, col2 = st.columns(2)
+            with col1:
+                st.session_state['source_col'] = st.selectbox(
+                    "Select source column",
+                    st.session_state['df'].columns
+                )
+            with col2:
+                st.session_state['target_col'] = st.selectbox(
+                    "Select target column",
+                    [col for col in st.session_state['df'].columns if col != st.session_state['source_col']]
+                )
+
+            # Data cleaning (moved from Lustration tab)
+            st.subheader("Data Cleaning")
+            remove_nulls = st.checkbox("Remove rows with missing values")
+            lowercase_text = st.checkbox("Convert text to lowercase")
+            remove_duplicates = st.checkbox("Remove duplicate rows")
+
+            if st.button("Clean Data"):
+                try:
+                    cleaned_df = st.session_state['df'].copy()
+                    if remove_nulls:
+                        cleaned_df.dropna(inplace=True)
+                    if lowercase_text:
+                        cleaned_df[st.session_state['source_col']] = cleaned_df[st.session_state['source_col']].str.lower()
+                        cleaned_df[st.session_state['target_col']] = cleaned_df[st.session_state['target_col']].str.lower()
+                    if remove_duplicates:
+                        cleaned_df.drop_duplicates(inplace=True)
+                    st.session_state['df'] = cleaned_df
+                    st.success("Data cleaned successfully!")
+                    st.dataframe(cleaned_df.head())
+                except Exception as e:
+                    st.error(f"Error during data cleaning: {str(e)}")
+        else:
+            st.info("Please upload your dataset in the sidebar first.")
+
+    # ---------------------- RECOMMENDATION TAB ----------------------
+    with tabs[1]:
+        st.header("Model Recommendation")
+        if 'df' in st.session_state and 'credentials_valid' in st.session_state:
+            if st.button("Analyze Dataset"):
+                with st.spinner("Analyzing dataset..."):
+                    try:
+                        temp_csv_path = "temp_dataset.csv"
+                        st.session_state['df'].to_csv(temp_csv_path, index=False)
+                        ralf = Ralf(HF_TOKEN=hf_token,
+                                    OPENAI_API_KEY=openai_key,
+                                    GEMINI_API_KEY=gemini_key)
+                        llm_df, dataset_df, analysis = ralf.recommend(
+                            temp_csv_path,
+                            st.session_state['source_col'],
+                            st.session_state['target_col']
+                        )
+                        os.remove(temp_csv_path)
+                        st.session_state['llm_df'] = llm_df
+                        st.session_state['dataset_df'] = dataset_df
+                        st.session_state['analysis'] = analysis
+                        st.success("Analysis complete! Check model recommendations below.")
+                    except Exception as e:
+                        st.error(f"Error during analysis: {str(e)}")
+
         if 'analysis' in st.session_state:
             st.subheader("🧠 Problem Analysis")
-
-            import json
             raw_analysis = st.session_state['analysis']
-
-        # Handle both dict and string formats
             if isinstance(raw_analysis, str):
                 try:
                     analysis = json.loads(raw_analysis)
@@ -200,91 +194,24 @@ def main():
                     analysis = {"reasoning": raw_analysis}
             else:
                 analysis = raw_analysis
+            st.markdown(f"**📝 Task Type:** `{analysis.get('types', ['Not specified'])[0]}`")
+            st.info(analysis.get("reasoning", "No reasoning provided"))
 
-            task_types = analysis.get("types", [])
-            reasoning = analysis.get("reasoning", "No reasoning provided")
+        if 'llm_df' in st.session_state and not st.session_state['llm_df'].empty:
+            st.subheader("Recommended Models")
+            llm_df = st.session_state['llm_df'].copy()
+            if "Name" in llm_df.columns and "Hugging Face URL" in llm_df.columns:
+                llm_df["Name"] = llm_df.apply(
+                    lambda row: f'<a href="{row["Hugging Face URL"]}" target="_blank">{row["Name"]}</a>'
+                    if pd.notnull(row["Hugging Face URL"]) and pd.notnull(row["Name"]) else row["Name"], axis=1
+                )
+            llm_df.insert(0, "S.No", range(1, len(llm_df) + 1))
+            display_df = llm_df[["S.No", "Name", "Parameters", "Description"]]
+            st.markdown(llm_df.to_html(escape=False, index=False), unsafe_allow_html=True)
 
-        # Display task type and reasoning
-            if task_types:
-                st.markdown(f"**📝 Task Type:** `{task_types[0]}`")
-            else:
-                st.markdown("**📝 Task Type:** Not specified")
 
-            st.markdown("**💡 Reasoning:**")
-            st.info(reasoning)
-        else:
-            st.info("Please analyze your dataset first to view problem type and reasoning.")
-
-    # Proceed only if LLM recommendations exist
-        if 'llm_df' in st.session_state:
-            if not isinstance(st.session_state['llm_df'], pd.DataFrame) or st.session_state['llm_df'].empty:
-                st.error("No models recommended. Please check your dataset and try again.")
-            else:
-                st.subheader("Recommended Models")
-                st.markdown("Below is a list of all recommended models for your dataset. Each model is assigned a serial number for easy reference. The table also includes a short description for each model.")
-
-                llm_df = st.session_state['llm_df'].copy()
-                if "Name" in llm_df.columns and "Hugging Face URL" in llm_df.columns:
-                    llm_df["Name"] = llm_df.apply(
-                        lambda row: f'<a href="{row["Hugging Face URL"]}" target="_blank">{row["Name"]}</a>' if pd.notnull(row["Hugging Face URL"]) and pd.notnull(row["Name"]) else row["Name"], axis=1
-                    )
-                # Add Serial Number column starting from 1
-                llm_df.insert(0, "S.No", range(1, len(llm_df) + 1))
-
-                # Add Description column for every recommended model
-                # Try to use model name or ID for mapping, fallback to a generic description
-                model_descriptions = {
-                    "distilbert-base-uncased": "A smaller, faster version of BERT for English text.",
-                    "bert-base-uncased": "The original BERT base model, uncased, for English.",
-                    "roberta-base": "A robustly optimized BERT pretraining approach.",
-                    "albert-base-v2": "A lite BERT model with fewer parameters and similar performance.",
-                    "xlnet-base-cased": "A generalized autoregressive pretraining model for language understanding.",
-                    # Add more known models here as needed
-                }
-
-                def get_description(row):
-                    # Try to extract the plain model name from the HTML link if present
-                    import re
-                    name = row["Name"]
-                    # Remove HTML tags if present
-                    plain_name = re.sub('<[^<]+?>', '', str(name))
-                    # Try Model ID if available
-                    model_id = row["Model ID"] if "Model ID" in row else None
-                    # Prefer model_id for lookup if available
-                    desc = model_descriptions.get(model_id, None)
-                    if not desc:
-                        desc = model_descriptions.get(plain_name, None)
-                    if not desc:
-                        desc = f"{plain_name} is a transformer-based language model from Hugging Face."
-                    return desc
-
-                llm_df["Description"] = llm_df.apply(get_description, axis=1)
-
-                display_df = llm_df[["S.No", "Name", "Parameters", "Description"]]
-                st.markdown(display_df.to_html(escape=False, index=False), unsafe_allow_html=True)
-
-                # Remove model selection, store all model IDs
-                if "Model ID" not in st.session_state['llm_df'].columns:
-                    st.error(f"`Model ID` column not found. Available columns: {', '.join(st.session_state['llm_df'].columns)}")
-                else:
-                    model_ids = st.session_state['llm_df']["Model ID"].tolist()
-                    if not model_ids:
-                        st.error("No model IDs found in the recommended models.")
-                    else:
-                        st.session_state['selected_models'] = model_ids  # Store all
-
-            # Golden dataset display
-            st.subheader("Recommended Golden Dataset")
-            #st.dataframe(st.session_state['dataset_df'])
-            #df = st.session_state['dataset_df']
-            #if "URL" in df.columns:
-                #df["URL"] = df["URL"].apply(lambda x: f'<a href="{x}" target="_blank">{x}</a>'), axis=1
-            #st.markdown(df.to_html(escape=False, index=False), unsafe_allow_html=True)
-
-        else:
-            st.info("Please upload and analyze your dataset first.")
     # Augmentation Tab
-    with tabs[1]:
+    with tabs[2]:
         st.header("Data Augmentation")
         if 'df' in st.session_state:
             df = st.session_state['df']
@@ -307,37 +234,37 @@ def main():
                     st.error(f"Error during augmentation: {str(e)}")
             else:
                 st.info("Please upload and analyze your dataset first to apply augmentation.")
-    with tabs[2]:
+    with tabs[3]:
         st.header("Data Lustration(Cleaning & Preprocessing)")
-        if 'df' in st.session_state:
-            df = st.session_state['df']
-            st.write("Original Dataset:")
-            st.dataframe(df.head())
-            remove_nulls = st.checkbox("Remove rows with missing values")
-            lowercase_text = st.checkbox("Convert text to lowercase")
-            remove_duplicates = st.checkbox("Remove duplicate rows")
-            if st.button("Clean Data"):
-                try:
-                    cleaned_df = df.copy()
-                    if remove_nulls:
-                        cleaned_df.dropna(inplace=True)
-                    if lowercase_text:
-                        cleaned_df[st.session_state['source_col']] = cleaned_df[st.session_state['source_col']].str.lower()
-                        cleaned_df[st.session_state['target_col']] = cleaned_df[st.session_state['target_col']].str.lower()
-                    if remove_duplicates:
-                        cleaned_df.drop_duplicates(inplace=True)
-                    st.session_state['cleaned_df'] = cleaned_df
-                    st.success("Data cleaned successfully!")
-                    st.dataframe(cleaned_df.head())
-                except Exception as e:
-                    st.error(f"Error during data cleaning: {str(e)}")
-            else:
-                st.info("Please upload and analyze your dataset first to apply lustration.")
+        #if 'df' in st.session_state:
+            #df = st.session_state['df']
+            #st.write("Original Dataset:")
+            #st.dataframe(df.head())
+            #remove_nulls = st.checkbox("Remove rows with missing values")
+            #lowercase_text = st.checkbox("Convert text to lowercase")
+            #remove_duplicates = st.checkbox("Remove duplicate rows")
+            #if st.button("Clean Data"):
+                #try:
+                    #cleaned_df = df.copy()
+                    #if remove_nulls:
+                        #cleaned_df.dropna(inplace=True)
+                    #if lowercase_text:
+                        #cleaned_df[st.session_state['source_col']] = cleaned_df[st.session_state['source_col']].str.lower()
+                        #cleaned_df[st.session_state['target_col']] = cleaned_df[st.session_state['target_col']].str.lower()
+                    #if remove_duplicates:
+                        #cleaned_df.drop_duplicates(inplace=True)
+                    #st.session_state['cleaned_df'] = cleaned_df
+                    #st.success("Data cleaned successfully!")
+                    #st.dataframe(cleaned_df.head())
+                #except Exception as e:
+                    #st.error(f"Error during data cleaning: {str(e)}")
+            #else:
+                #st.info("Please upload and analyze your dataset first to apply lustration.")
 
 
 
     # Training Tab
-    with tabs[3]:
+    with tabs[4]:
         st.header("Model Futureproofing")
         if 'selected_models' in st.session_state:
             col1, col2 = st.columns(2)

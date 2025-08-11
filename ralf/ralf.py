@@ -460,7 +460,7 @@ class Ralf:
         ram_gb = self.ram_gb
         client_info = self.get_llm_client()
         if not client_info:
-            llm_df = pd.DataFrame(columns=["Name", "Hugging Face URL", "Model ID", "Parameters"])
+            llm_df = pd.DataFrame(columns=["Name", "Hugging Face URL", "Model ID", "Parameters","Description"])
             dataset_df = pd.DataFrame(columns=["Name", "URL", "Source Column", "Target Column"])
             return llm_df, dataset_df, "Error: Neither OpenAI nor Gemini API key provided (should have been caught in initialization)."
 
@@ -492,13 +492,13 @@ class Ralf:
         try:
             analysis = self.analyze_problem_type(pd.read_csv(input_csv_file), source_col, target_col)
             if not isinstance(analysis, dict):
-                 llm_df = pd.DataFrame(columns=["Name", "Hugging Face URL", "Model ID", "Parameters"])
+                 llm_df = pd.DataFrame(columns=["Name", "Hugging Face URL", "Model ID", "Parameters","Description"])
                  dataset_df = pd.DataFrame(columns=["Name", "URL", "Source Column", "Target Column"])
                  return llm_df, dataset_df, analysis # Return error from analyze_problem_type
             problem_types = analysis.get('types', [])
             reasoning = analysis.get('reasoning', 'No reasoning provided.')
         except Exception as e:
-             llm_df = pd.DataFrame(columns=["Name", "Hugging Face URL", "Model ID", "Parameters"])
+             llm_df = pd.DataFrame(columns=["Name", "Hugging Face URL", "Model ID", "Parameters","Description"])
              dataset_df = pd.DataFrame(columns=["Name", "URL", "Source Column", "Target Column"])
              return llm_df, dataset_df, f"Error during problem type analysis: {e}"
 
@@ -508,8 +508,13 @@ class Ralf:
             f"Based on the following problem types ({', '.join(problem_types)}) "
             f"and the available resources (GPU: {gpu_available}, GPU RAM: {gpu_ram_gb} GB, System RAM: {ram_gb} GB), "
             "recommend the top 5 open-source LLM models that would be suitable for fine-tuning for this task. "
-            "For each recommended model, provide its name, the URL of its Hugging Face page, and a common identifier or path used to load the model (e.g., 'bert-base-uncased'). "
-            "Return a JSON object with a single key 'llm_info' which is a list of dictionaries, where each dictionary contains 'name', 'huggingface_url', and 'model_id'. "
+            "For each, return:\n"
+            "- name\n"
+            "- model_id (Hugging Face identifier)\n"
+            "- huggingface_url\n"
+            "- size (e.g., 1.3B, 7B, 13B)\n"
+            "- description (1-liner summary of the model's specialty)\n\n"
+            "Return a JSON object with a single key 'llm_info' which is a list of dictionaries, where each dictionary contains 'name', 'model_id', 'huggingface_url', 'size' and 'description'. "
             "Do not include any other text, just the JSON object.\n\n"
             f"Problem types reasoning: {reasoning}"
         )
@@ -554,7 +559,8 @@ class Ralf:
                     "Name": info.get("name", "N/A"),
                     "Hugging Face URL": info.get("huggingface_url", "N/A"),
                     "Model ID": info.get("model_id", "N/A"),
-                    "Parameters": self.estimate_param_count(info.get("model_id", "N/A"))
+                    "Parameters": self.estimate_param_count(info.get("model_id", "N/A")),
+                    "Description": info.get("description", "N/A")
                   } for info in llm_recommendations.get('llm_info', [])  # Use the estimate_param_count method
             ]
             dataset_data = [{
@@ -568,7 +574,7 @@ class Ralf:
         except Exception as e:
             # Handle cases where the API call fails or returns unexpected results
             # Return empty DataFrames and the error message
-            llm_df = pd.DataFrame(columns=["Name", "Hugging Face URL", "Model ID", "Parameters"])
+            llm_df = pd.DataFrame(columns=["Name", "Hugging Face URL", "Model ID", "Parameters","Description"])
             dataset_df = pd.DataFrame(columns=["Name", "URL", "Source Column", "Target Column"])
             analysis = f"Error calling API: {e}"
 
