@@ -42,9 +42,19 @@ st.markdown("""
 # ---------------------- SYSTEM INFO ----------------------
 def get_system_info():
     gpu_available = torch.cuda.is_available()
-    gpu_info = f"{torch.cuda.get_device_name(0)}" if gpu_available else "No GPU"
-    gpu_memory = f"{torch.cuda.get_device_properties(0).total_memory/1024**3:.2f} GB" if gpu_available else "N/A"
-    ram = humanize.naturalsize(psutil.virtual_memory().total)
+    if gpu_available:
+        gpu_info = torch.cuda.get_device_name(0)
+        gpu_total = torch.cuda.get_device_properties(0).total_memory / 1024**3
+        gpu_reserved = torch.cuda.memory_reserved(0) / 1024**3
+        gpu_allocated = torch.cuda.memory_allocated(0) / 1024**3
+        gpu_free = gpu_total - gpu_reserved
+        gpu_memory = f"{gpu_free:.2f} GB free / {gpu_total:.2f} GB total"
+    else:
+        gpu_info = "No GPU"
+        gpu_memory = "N/A"
+    ram_total = psutil.virtual_memory().total / 1024**3
+    ram_available = psutil.virtual_memory().available / 1024**3
+    ram = f"{ram_total:.2f} GB"
     return {
         "GPU Available": "✅ Yes" if gpu_available else "❌ No",
         "GPU Model": gpu_info,
@@ -209,7 +219,24 @@ def main():
             display_df = llm_df[["S.No", "Name", "Parameters", "Description"]]
             st.markdown(llm_df.to_html(escape=False, index=False), unsafe_allow_html=True)
 
-
+        # --- Golden Datasets Section ---
+        if 'dataset_df' in st.session_state and not st.session_state['dataset_df'].empty:
+            st.subheader("Recommended Golden Datasets")
+            dataset_df = st.session_state['dataset_df'].copy()
+            # Make Name a clickable link if Hugging Face URL is present
+            if "Name" in dataset_df.columns and "Hugging Face URL" in dataset_df.columns:
+                dataset_df["Name"] = dataset_df.apply(
+                    lambda row: f'<a href="{row["Hugging Face URL"]}" target="_blank">{row["Name"]}</a>'
+                    if pd.notnull(row["Hugging Face URL"]) and pd.notnull(row["Name"]) else row["Name"], axis=1
+                )
+            dataset_df.insert(0, "S.No", range(1, len(dataset_df) + 1))
+            # Always show S.No, Name, Hugging Face URL, and Description (if available)
+            columns_to_show = ["S.No", "Name"]
+            if "Hugging Face URL" in dataset_df.columns:
+                columns_to_show.append("Hugging Face URL")
+            if "Description" in dataset_df.columns:
+                columns_to_show.append("Description")
+            st.markdown(dataset_df[columns_to_show].to_html(escape=False, index=False), unsafe_allow_html=True)
     # Augmentation Tab
     with tabs[2]:
         st.header("Data Augmentation")
